@@ -1,0 +1,12 @@
+.env
+config.json
+uri-data.json
+linksai.json
+privateKeys.json
+storageAccount.json
+treePair.json
+linksai-uri.json
+.collection
+.treeconfig
+testing.js
+node_modules
