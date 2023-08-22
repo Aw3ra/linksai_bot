@@ -50,7 +50,7 @@ export async function send_token(fromSecretKeyStr, toPublicKeyStr, amount, token
 
     // Transfer the new token to the "toTokenAccount" we just created
     try{
-        signature = await transfer(
+        const signature = await transfer(
             connection,
             fromWallet,
             fromTokenAccount.address,
@@ -58,6 +58,7 @@ export async function send_token(fromSecretKeyStr, toPublicKeyStr, amount, token
             fromWallet.publicKey,
             amount*decimals
         );
+        return signature;
     }
     catch(err){
         console.log(err);

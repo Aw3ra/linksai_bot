@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 
 const attributeNames = [
-    'backgrounds', 'Skin', 'Torso', 'Feet', 'Legs', 'Hair', 'Faces'
+    'background', 'skin', 'torso', 'feet', 'legs', 'hair', 'face'
 ];
 
 const attributes = {};
@@ -116,7 +116,7 @@ export async function decideFunction(message) {
                                     description: "The background of the nft",
                                     enum: attributes.backgrounds
                                 },
-                                faces:{
+                                face:{
                                     type: "string",
                                     description: "The face of the nft",
                                     enum: attributes.Faces
@@ -150,7 +150,7 @@ export async function decideFunction(message) {
                         }
                     }
                 },
-                required: ["name"]
+                required: ["name", "attributes"]
             }
         ],
       });

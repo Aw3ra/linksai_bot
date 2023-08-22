@@ -1,20 +1,18 @@
 import "./config.js";
 import * as fs from 'fs';
 import path from 'path';
-import { Client, Events, GatewayIntentBits, Collection, DiscordAPIError, EmbedBuilder } from 'discord.js'
-
-import { upload } from "./crypto/solana/merkle-tree/shadowUpload.js";
-import { createMetadata } from "./crypto/solana/cnfts/createMetadata.js";
-import { mint } from "./crypto/solana/merkle-tree/mintNode.js";
+import { Client, Events, GatewayIntentBits, Collection, DiscordAPIError, EmbedBuilder, ChannelType } from 'discord.js'
+import { mint_nft } from "./functions/mint_nft.js";
 import { decideFunction } from "./AI/decideFunction.js";
 import { createResponse } from "./AI/createResponse.js";
 import { createTipLink } from "./crypto/tiplink/createTipLink.js";
 import { transfer_tokens } from "./crypto/solana/transfer.js";
+import { mint } from "./crypto/solana/merkle-tree/mintNode.js";
 
 const config = JSON.parse(fs.readFileSync("./config.json", 'utf8'));
 const { clientId, guildId, token, dms } = config;
 
-
+const conversations = new Map();
 
 
 // Create a new client instance
@@ -66,67 +64,118 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 client.on("messageCreate", async message =>{
-	if(message.author.bot) return;
+	if(message.author.bot){
+		return;
+	}
 	if(message.mentions.has(client.user.id)){
-		const results = await decideFunction(message.author.id+": "+message.content.replace('<@!'+client.user.id+'>', ''));
-
-		if(results.name=="reply"){
-			const reply = await createResponse(message.content)
-			await message.reply(reply);
-		}
-		else if(results.name=="send_tip"){
-			if(dms==="on"){
-				const tiplink = await createTipLink();
-				//Function to mint NFT here 
-		
-				// Transfer tokens OR nft to the tiplink
-				transfer_tokens(tiplink.pubkey);
-				// Send the tiplink to the user in a DM, the user name is results.arguments.name
-				let usr = await client.users.fetch(JSON.parse(results.arguments).name.replace('<@', '').replace('>', ''));
-				try{
-					await usr.send(tiplink.link);
-				}
-				catch(err){
-					await message.reply("Sorry I can't send you a tip link, please enable DMs from server members"+err);
-				}
+		try{
+			message.channel.sendTyping();
+			const userMessages = conversations.get(message.author.id) || [];
+			userMessages.push({author: message.author.username, content: message.content.replace('<@!'+client.user.id+'>', '')});
+			const results = await decideFunction(message.author.id+": "+message.content.replace('<@!'+client.user.id+'>', ''));
+			console.log(results);
+        	if(conversations.has(message.author.id)){
+				conversations.set(message.author.id, userMessages);
 			}
 			else{
-				await message.reply(tiplink.link);
+				conversations.set(message.author.id, [{author: message.author.username, content: message.content}]);
 			}
-		}else if(results.name=="mint-nft"){
-				// Turn attributes from a string into an object
-				const attributesObject = JSON.parse(results.arguments);
-				const tipLink = await createTipLink();
-				let usr = await client.users.fetch(JSON.parse(results.arguments).name.replace('<@', '').replace('>', ''));
-				// Create the metadata string, if the attributes are not provided, use a random attribute
-				const nftMetdata = {
-					name: "linksai",
-					symbol: "LINKSAI",
-					description: "LINKSAI is a collection of 10,000 unique NFTs on the Solana blockchain.",
-					external_url: "https://linksai.xyz",
-					image: "https://linksai.xyz/images/linksai.png",
-					attributes: {
-						backgrounds: attributesObject.backgrounds || null,
-						Skin: attributesObject.Skin || null,
-						Torso: attributesObject.Torso || null,
-						Feet: attributesObject.Feet || null,
-						Legs: attributesObject.Legs || null,
-						Hair: attributesObject.Hair || null,
-						Faces: attributesObject.Faces || null,
-					}
+
+			let reply;
+			if (results == undefined || results.name == "reply") {
+				console.log(conversations)
+				reply = await createResponse(conversations);
+				
+				// Add the bot's reply
+				userMessages.push({author: client.user.displayName, content: reply});
+				await message.reply(reply);
+			}
+			else if(results.name=="send_tip")
+			{
+				if(dms==="on"){
+					const tiplink = await createTipLink();
+					//Function to mint NFT here 
+			
+					// Transfer tokens OR nft to the tiplink
+					transfer_tokens(tiplink.pubkey);
+					// Send the tiplink to the user in a DM, the user name is results.arguments.name
+					let usr = await client.users.fetch(JSON.parse(results.arguments).name.replace('<@', '').replace('>', ''));
+					const dmEmbed = new EmbedBuilder()
+					.setTitle("New Linksai Tip!")
+					.setDescription(await createResponse(conversations, {"role": "system", "content": "You are a discord bot named Linksai and you have just sent "+ usr +" some crypto, celebrate with them! This message is going straight to a private thread's, be super duper excited!."}))
+					.setURL(tiplink.link)
+					.setColor("#FFA500")
+					const thread = await message.channel.threads.create({
+						name: "Tip for "+ usr.username+"!",
+						autoArchiveDuration: 60,
+						type: ChannelType.PrivateThread,
+						reason: "Tip Link"
+					});
+					thread.members.add(usr.id);
+					await thread.send({
+						embeds: [dmEmbed],
+					});
 				}
-				const nfttest = await createMetadata(nftMetdata);
-				const metadataString = await upload("4T974QUpAoe5kDdsBKQpV4rtTtm7qmSjNNyjSFc94X3X", nfttest.metadata);
-				// const mintTransaction = await mint(tipLink.pubkey, metadataString);
-				const xrayEmbed = new EmbedBuilder().setTitle("Xray").setDescription("View the mint here!").setURL("https://www.google.com").setColor(251, 206, 177);
-				await message.reply({
-					content: "I've just minted you an NFT!", 
-					embeds: [xrayEmbed],
-					files: [nfttest.image]
-				});
-		// Create a response with the tiplink
-	}
-	}
+				else{
+					await message.reply(tiplink.link);
+				}
+			}
+			else if(results.name=="mint-nft")
+			{
+					// Mint systemMessage
+
+					// Turn attributes from a string into an object
+					let usr = await client.users.fetch(JSON.parse(results.arguments).name.replace('<@', '').replace('>', ''));
+					const mintSystemMessage = {"role": "system", "content": "You are a discord bot named Linksai and you have just minted an NFT for "+ usr +", celebrate with them both! You have also sent a link via direct message, do not include any links."}
+					const mintResponse = await mint_nft(results);
+					const xrayEmbed = new EmbedBuilder()
+					.setTitle("New Linksai Gensis: "+mintResponse.metadata.name+"!")
+					.setDescription(await createResponse(conversations, mintSystemMessage))
+					.setURL(mintResponse.mintTransaction)
+					.setColor("#FFA500")
+					.setImage(mintResponse.thumbnail)
+
+					const repliedMessage = await message.reply({
+						embeds: [xrayEmbed],
+					});
+					try{
+						const dmEmbed = new EmbedBuilder()
+						.setTitle("New Linksai Gensis: "+mintResponse.metadata.name+"!")
+						.setDescription(await createResponse(conversations, {"role": "system", "content": "You are a discord bot named Linksai and you have just minted an NFT for "+ usr +", celebrate with them! This message is going straight to their DM's, be super duper excited!."}))
+						.setURL(mintResponse.link)
+						.setColor("#FFA500")
+						.setImage(mintResponse.thumbnail)
+
+						const thread = await message.channel.threads.create({
+							name: mintResponse.metadata.name +" for "+ usr.username+"!",
+							autoArchiveDuration: 60,
+							type: ChannelType.PrivateThread,
+							reason: "Tip Link"
+						});
+						thread.members.add(usr.id);
+						await thread.send({
+							embeds: [dmEmbed],
+						});
+					} catch(err){
+						console.log(err);
+						await repliedMessage.reply(await createResponse(conversations, {"role": "system", "content": "You are a discord bot named Linksai, you just tried to send a DM to "+ usr.username+ " but they have DMs from server members disabled. Ask them nicely to turn on DM's."}));
+					}
+					
+			// Create a response with the tiplink
+			// Update the user's conversation in the map
+			}
+			else if(results.name=="receive_tip")
+			{
+				const tiplink = await JSON.parse(results.arguments).link;
+				let usr = await client.users.fetch(JSON.parse(results.arguments).name.replace('<@', '').replace('>', ''));
+			}
+			conversations.set(message.author.id, userMessages);
+		}
+		catch(err){
+			console.log(err);
+			await message.reply(await createResponse(conversations, {"role": "system", "content": "You are a discord bot named Linksai, you just tried to do something but something went wrong. Apologise to the user and ask them to try again"}));
+		}
+	}	
 });
 
 // Log in to Discord with your client's token

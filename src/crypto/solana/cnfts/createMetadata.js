@@ -25,8 +25,11 @@ export async function createMetadata(attributes) {
         if (attributes.attributes[attribute] === null) {
             let newAttribute = randomAttribute(attribute);
             attributes.attributes[attribute] = newAttribute;
+        }else{
+            attributes.attributes[attribute] = attributes.attributes[attribute];
         }
     }
+    console.log("Post change attributes: ", attributes.attributes);
 
     const imageName = "./crypto/solana/cnfts/nfts/createdNfts/" + randomName + ".png";
     const imagePath = await createNFT(
